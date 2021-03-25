@@ -3,6 +3,16 @@
 
 ; Group 4: Aranya Kumar, Kris Tran, Kyle Ngo
 
+;(define interpret
+  ;(lambda (filename)
+    ;(cond
+      ;((null? (cdr (parser filename))) (M-state (car (parser filename)) '(()())))
+      ;(else (M-state (cdr (parser filename)) (M-state (car (parser filename)) '(()())))))))
+
+(define interpret
+  (lambda (filename)
+    (M-state (parser filename) '(()()))))
+
 ; M-integer
 (define M-integer
   (lambda (expression state)
@@ -60,8 +70,9 @@
 (define M-state-declaration
   (lambda (expression state)
     (cond
-      ((not (null? (cddr expression))) (addbinding (variable expression) (M-integer (expression-value expression) state) state))
-      (else (addbinding (variable expression) '() state)))))
+      ((null? (cddr expression)) (addbinding (variable expression) 'null state))
+      ((declared? (variable expression) (car state)) (addbinding (variable expression) (M-integer (expression-value expression) state) (removebinding (variable expression) state)))
+      (else (addbinding (variable expression) (M-integer (expression-value expression) state) state)))))
 
 ; Abstractions for M-state-assignment and declaration
 (define variable cadr)
@@ -89,7 +100,7 @@
            (M-integer (cadr returnstate) state)))
       ((eq? (cadr returnstate) '#t) #t)
       ((eq? (cadr returnstate) '#f) #f)
-      (else (M-boolean (cadr returnstate) state)))))
+      (else (M-integer (cadr returnstate) state)))))
 
 ; M-state-if
 (define M-state-if
@@ -107,14 +118,20 @@
 
 ; M-state
 (define M-state
-  (lambda (expression state)
+  (lambda (stmt state)
     (cond
-      ((eq? (car expression) 'if) (M-state-if expression state))
-      ((eq? (car expression) 'while) (M-state-while expression state))
-      ((eq? (car expression) 'var) (M-state-declaration expression state))
-      ((eq? (car expression) '=) (M-state-assignment expression state))
-      ((eq? (car expression) 'return) (M-state-return expression state))
-      (else (error 'bad-operator)))))
+      ((null? stmt) state)
+      ((list? (operator stmt)) (M-state (remaining-stmts stmt) (M-state (first-stmt stmt) state)))
+      ((eq? (operator stmt) 'var) (M-state-declaration stmt state))
+      ((eq? (operator stmt) '=) (M-state-assignment stmt state))
+      ((eq? (operator stmt) 'if) (M-state-if stmt state))
+      ((eq? (operator stmt) 'while) (M-state-while stmt state))
+      ((eq? (operator stmt) 'return) (M-state-return stmt state))
+      (else (error 'stmt-not-defined)))))
+
+; Abstraction for M-state
+(define remaining-stmts cdr)
+(define first-stmt car)
 
 ; list of helper methods
 
@@ -149,10 +166,13 @@
       (else (cons (car lis) (remove-element-by-index (- a 1) (cdr lis)))))))
 ; return an element at a given index
 (define element-at-index
-    (lambda (a lis)
-      (if (= a 0)
-          (car lis)
-          (element-at-index (- a 1) (cdr lis)))))
+  (lambda (a lis)
+    (cond
+      ((= a 0)
+       (if (eq? (car lis) 'null)
+           (error 'unassigned-variable)
+           (car lis)))
+      (else (element-at-index (- a 1) (cdr lis))))))
 ; return if an expression is a boolean expression
 (define isBool
   (lambda (expression)
@@ -163,4 +183,10 @@
       ((or (eq? (car expression) '==) (eq? (car expression) '!=)) #t)
       ((eq? (car expression) '!) #t)
       (else #f))))
-      
+; check if a variable has been declared
+(define declared?
+  (lambda (x declared)
+    (cond
+      ((null? declared) #f)
+      ((eq? x (car declared)) #t)
+      (else (declared? x (cdr declared))))))
