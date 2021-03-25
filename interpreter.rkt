@@ -3,12 +3,6 @@
 
 ; Group 4: Aranya Kumar, Kris Tran, Kyle Ngo
 
-;(define interpret
-  ;(lambda (filename)
-    ;(cond
-      ;((null? (cdr (parser filename))) (M-state (car (parser filename)) '(()())))
-      ;(else (M-state (cdr (parser filename)) (M-state (car (parser filename)) '(()())))))))
-
 (define interpret
   (lambda (filename)
     (M-state (parser filename) '(()()))))
