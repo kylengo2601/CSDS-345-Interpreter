@@ -5,7 +5,9 @@
 
 (define interpret
   (lambda (filename)
-    (M-state (parser filename) '(()()))))
+    (M-state (parser filename) initialstate)))
+
+(define initialstate '(()()))
 
 ; M-integer
 (define M-integer
