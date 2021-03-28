@@ -106,10 +106,10 @@
 
 ; M-state-while: iterates through the while loop and exits with the state
 (define M-state-while
-  (lambda (whilestate state)
+  (lambda (whilestate state break throw continue)
     (cond
-      ((M-boolean (condition whilestate) state)
-       (M-state-while whilestate (M-state (body whilestate) state)))
+      ((M-boolean (condition whilestate) state) (call/cc (lambda (f) 
+                                                            (M-state-while whilestate (M-state (body whilestate) state f) break continue throw))))
       (else state))))
 
 ; Abstraction for M-state-while
@@ -153,7 +153,7 @@
       ((eq? (operator stmt) 'while) (M-state-while stmt state return throw))
       ((eq? (operator stmt) 'return) (M-state-return stmt state return throw))
       ((eq? (operator stmt) 'throw) (M-state-throw stmt state throw))
-      ((eq? (operator stmt) 'continue) (M-state-continue state))
+      ((eq? (operator stmt) 'continue) (M-state-continue state continue))
       ((eq? (operator stmt) 'break) (M-state-break state))
       ((eq? (operator stmt) 'begin) ) ; need this??
       ((eq? (operator stmt) 'try) (M-state-try stmt state return break continue throw))
@@ -162,7 +162,10 @@
 (define M-state-throw
   (lambda (throwblock state throw)
     (throw (M-integer (expression-of throwblock) state throw) state)))
-
+    
+(define M-state-continue
+  (lambda (state continue)
+    (continue (state))))
 
 ; Abstraction for M-state
 (define remaining-stmts cdr)
