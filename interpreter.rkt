@@ -3,13 +3,34 @@
 
 ; Group 4: Aranya Kumar, Kris Tran, Kyle Ngo
 
-; interpret: gets the a parsed list of code from a file
-(define interpret
-  (lambda (filename)
-    (M-state (parser filename) initialstate)))
+; 3 errors
+(define breakOutsideLoopError
+  (lambda (env) (myerror "Break used outside loop")))
+
+(define continueOutsideLoopError
+  (lambda (env) (myerror "Continue used outside of loop")))
+
+(define uncaughtExceptionThrownError
+  (lambda (v env) (myerror "Uncaught exception thrown")))
 
 ;Interpret abstraction: initializes the state to be null with no variables
 (define initialstate '(()()))
+
+; interpret: gets the a parsed list of code from a file
+(define interpret
+  (lambda (filename)
+    (call/cc
+      (lambda (return)
+        (interpret-code-block (parser file) (initialstate) return
+                                  breakOutsideLoopError continueOutsideLoopError
+                                  uncaughtExceptionThrownError)))))
+
+(define interpret-code-block
+  (lambda (code-block-list state return break continue throw)
+    (interpret-code-block (rest-of-code code-block-list) (M-state (first-code-block code-block-list) state return break continue throw) return break continue throw)))
+    
+(define rest-of-code cdr)
+(define first-code-block car)
 
 ; M-integer: computes the value of an expression. Outputs a value or bad operator.
 (define M-integer
@@ -43,7 +64,7 @@
       (else (error 'bad-operator)))))
 
 ; Operators & Operands Abstractions
-(define operator (lambda (expression) (car expression)))
+;(define operator (lambda (expression) (car expression)))
 (define leftoperand cadr)
 (define rightoperand (lambda (expression) (caddr expression)))
 
@@ -97,7 +118,7 @@
 
 ; M-state-return: returns the value of the expression or variable
 (define M-state-return
-  (lambda (returnstate state)
+  (lambda (returnstate state return throw)
     (cond
       ((pair? (cadr returnstate))
        (if (isBool (cadr returnstate))
@@ -106,6 +127,7 @@
       ((eq? (cadr returnstate) '#t) #t)
       ((eq? (cadr returnstate) '#f) #f)
       (else (M-integer (cadr returnstate) state)))))
+
 
 ; M-state-if: if the condition is true, it executes statement1, if not, executes statement2
 (define M-state-if
@@ -123,24 +145,72 @@
 
 ; M-state: goes through parsed code and calls applicable functions to run the code
 (define M-state
-  (lambda (stmt state)
+  (lambda (stmt state return break continue throw)
     (cond
-      ((null? stmt) state)
-      ((list? (operator stmt)) (M-state (remaining-stmts stmt) (M-state (first-stmt stmt) state)))
-      ((eq? (operator stmt) 'var) (M-state-declaration stmt state))
-      ((eq? (operator stmt) '=) (M-state-assignment stmt state))
-      ((eq? (operator stmt) 'if) (M-state-if stmt state))
-      ((eq? (operator stmt) 'while) (M-state-while stmt state))
-      ((eq? (operator stmt) 'return) (M-state-return stmt state))
-      (else (error 'stmt-not-defined)))))
-;separate list and rest of statements
+      ((eq? (operator stmt) 'var) (M-state-declaration stmt state return break continue throw))
+      ((eq? (operator stmt) '=) (M-state-assignment stmt state throw))
+      ((eq? (operator stmt) 'if) (M-state-if stmt state return break throw))
+      ((eq? (operator stmt) 'while) (M-state-while stmt state return throw))
+      ((eq? (operator stmt) 'return) (M-state-return stmt state return throw))
+      ((eq? (operator stmt) 'throw) (M-state-throw stmt state throw))
+      ((eq? (operator stmt) 'continue) (M-state-continue state))
+      ((eq? (operator stmt) 'break) (M-state-break state))
+      ((eq? (operator stmt) 'begin) ) ; need this??
+      ((eq? (operator stmt) 'try) (M-state-try stmt state return break continue throw))
+      (else (error 'statement-not-defined)))))
+
+(define M-state-throw
+  (lambda (throwblock state throw)
+    (throw (M-integer (expression-of throwblock) state throw) state)))
 
 
 ; Abstraction for M-state
 (define remaining-stmts cdr)
 (define first-stmt car)
 
-; list of helper methods
+
+;-----------------
+; HELPER FUNCTIONS
+;-----------------
+
+; These helper functions define the operator and operands of a value expression
+(define operator car)
+(define operand1 cadr)
+(define operand2 caddr)
+(define operand3 cadddr)
+
+(define exists-operand2?
+  (lambda (statement)
+    (not (null? (cddr statement)))))
+
+(define exists-operand3?
+  (lambda (statement)
+    (not (null? (cdddr statement)))))
+
+; these helper functions define the parts of the various statement types
+(define expression-of operand1)
+(define get-declare-var operand1)
+(define get-declare-value operand2)
+(define exists-declare-value? exists-operand2?)
+(define get-assign-lhs operand1)
+(define get-assign-rhs operand2)
+(define get-condition operand1)
+(define get-then operand2)
+(define get-else operand3)
+(define get-body operand2)
+(define exists-else? exists-operand3?)
+(define get-try operand1)
+(define get-catch operand2)
+(define get-finally operand3)
+
+(define catch-var
+  (lambda (catch-statement)
+    (car (operand1 catch-statement))))
+
+
+
+
+
 
 ; return true if x is a name of a variable (not a list or a number)
 (define name?
@@ -180,6 +250,7 @@
            (error 'unassigned-variable)
            (car lis)))
       (else (element-at-index (- a 1) (cdr lis))))))
+
 ; return if an expression is a boolean expression
 (define isBool
   (lambda (expression)
@@ -190,6 +261,7 @@
       ((or (eq? (car expression) '==) (eq? (car expression) '!=)) #t)
       ((eq? (car expression) '!) #t)
       (else #f))))
+
 ; check if a variable has been declared
 (define declared?
   (lambda (x declared)
