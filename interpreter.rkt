@@ -3,11 +3,15 @@
 
 ; Group 4: Aranya Kumar, Kris Tran, Kyle Ngo
 
+; interpret: gets the a parsed list of code from a file
 (define interpret
   (lambda (filename)
-    (M-state (parser filename) '(()()))))
+    (M-state (parser filename) initialstate)))
 
-; M-integer
+;Interpret abstraction: initializes the state to be null with no variables
+(define initialstate '(()()))
+
+; M-integer: computes the value of an expression. Outputs a value or bad operator.
 (define M-integer
   (lambda (expression state)
     (cond
@@ -21,16 +25,16 @@
       ((eq? (operator expression) '*) (* (M-integer (leftoperand expression) state) (M-integer (rightoperand expression) state)))
       (else (error 'bad-operator)))))
 
-; M-boolean
+; M-boolean: compares right and left operands of a boolean expression. Outputs true, false, or bad operator.
 (define M-boolean
   (lambda (expression state)
     (cond
       ((eq? (operator expression) '#t) #t)
       ((eq? (operator expression) '#f) #f)
       ((eq? (operator expression) '<) (< (M-integer (leftoperand expression) state) (M-integer (rightoperand expression) state)))
-      ((eq? (operator expression) '<=) (or (< (M-integer (leftoperand expression) state) (M-integer (rightoperand expression) state)) (eq? (M-integer (leftoperand expression) state) (M-integer (rightoperand expression) state))))
+      ((eq? (operator expression) '<=) (<= (M-integer (leftoperand expression) state) (M-integer (rightoperand expression) state)))
       ((eq? (operator expression) '>) (> (M-integer (leftoperand expression) state) (M-integer (rightoperand expression) state)))
-      ((eq? (operator expression) '>=) (or (> (M-integer (leftoperand expression) state) (M-integer (rightoperand expression) state)) (eq? (M-integer (leftoperand expression) state) (M-integer (rightoperand expression) state))))
+      ((eq? (operator expression) '>=) (>= (M-integer (leftoperand expression) state) (M-integer (rightoperand expression) state)))
       ((eq? (operator expression) '==) (eq? (M-integer (leftoperand expression) state) (M-integer (rightoperand expression) state)))
       ((eq? (operator expression) '!=) (not (eq? (M-integer (leftoperand expression) state) (M-integer (rightoperand expression) state))))
       ((eq? (operator expression) '||) (or (M-boolean (leftoperand expression) state) (M-boolean (rightoperand expression) state)))
@@ -43,24 +47,31 @@
 (define leftoperand cadr)
 (define rightoperand (lambda (expression) (caddr expression)))
 
+; Addbinding: stores value in a variable
 (define addbinding
-  (lambda (name value state) (list (add-to-end name (car state)) (add-to-end value (cadr state)))))
+  (lambda (name value state) (list (add-to-end name (variables state)) (add-to-end value (values state)))))
 
+; Removebinding: removes the value from a variable
 (define removebinding
   (lambda (name state)
     (cond
       ((null? state) state)
-      (else (list (removefirst name (car state)) (remove-element-by-index (index name (car state)) (cadr state)))))))
- 
+      (else (list (removefirst name (variables state)) (remove-element-by-index (index name (variables state)) (values state)))))))
+
+; Lookupbinding: looks up the value of a given variable
 (define lookupbinding
-  (lambda (name state) (element-at-index (index name (car state)) (cadr state))))
+  (lambda (name state) (element-at-index (index name (variables state)) (values state))))
+
+; Abstrations for bindings
+(define variables car)
+(define values cadr)
       
-; M-state-assignment
+; M-state-assignment: computes expression and registers value of expression to variable name
 (define M-state-assignment
   (lambda (expression state)
     (addbinding (variable expression) (M-integer (expression-value expression) state) (removebinding (variable expression) state))))
 
-; M-state-declaration
+; M-state-declaration: 
 (define M-state-declaration
   (lambda (expression state)
     (cond
@@ -72,7 +83,7 @@
 (define variable cadr)
 (define expression-value (lambda (expression) (caddr expression)))
 
-; M-state-while
+; M-state-while: iterates through the while loop and exits with the state
 (define M-state-while
   (lambda (whilestate state)
     (cond
@@ -84,7 +95,7 @@
 (define condition cadr)
 (define body caddr)
 
-; M-state-return
+; M-state-return: returns the value of the expression or variable
 (define M-state-return
   (lambda (returnstate state)
     (cond
@@ -96,7 +107,7 @@
       ((eq? (cadr returnstate) '#f) #f)
       (else (M-integer (cadr returnstate) state)))))
 
-; M-state-if
+; M-state-if: if the condition is true, it executes statement1, if not, executes statement2
 (define M-state-if
   (lambda (ifstate state)
     (cond
@@ -110,7 +121,7 @@
 (define ifbody (lambda (ifstate) (caddr ifstate)))
 (define nextif (lambda (ifstate) (cadddr ifstate)))
 
-; M-state
+; M-state: goes through parsed code and calls applicable functions to run the code
 (define M-state
   (lambda (stmt state)
     (cond
@@ -122,6 +133,8 @@
       ((eq? (operator stmt) 'while) (M-state-while stmt state))
       ((eq? (operator stmt) 'return) (M-state-return stmt state))
       (else (error 'stmt-not-defined)))))
+;separate list and rest of statements
+
 
 ; Abstraction for M-state
 (define remaining-stmts cdr)
