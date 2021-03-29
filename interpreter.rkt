@@ -14,7 +14,7 @@
   (lambda (v env) (error 'Uncaught-exception-thrown)))
 
 ;Interpret abstraction: initializes the state to be null with no variables
-(define initialstate '(()()))
+(define initialstate '((()())))
 
 ; interpret: gets the a parsed list of code from a file
 (define interpret
@@ -33,6 +33,22 @@
     
 (define rest-of-code cdr)
 (define first-code-block car)
+
+; M-state: goes through parsed code and calls applicable functions to run the code
+(define M-state
+  (lambda (stmt state return break continue throw)
+    (cond
+      ((eq? (operator stmt) 'var) (M-state-declaration stmt state))
+      ((eq? (operator stmt) '=) (M-state-assignment stmt state))
+      ((eq? (operator stmt) 'if) (M-state-if stmt state return break continue throw))
+      ((eq? (operator stmt) 'while) (M-state-while stmt state return throw))
+      ((eq? (operator stmt) 'return) (M-state-return stmt state return throw))
+      ((eq? (operator stmt) 'throw) (M-state-throw stmt state throw))
+      ((eq? (operator stmt) 'continue) (continue state))
+      ((eq? (operator stmt) 'break) (break state))
+      ((eq? (operator stmt) 'begin) (M-state-begin stmt state return break continue throw)) 
+      ;((eq? (operator stmt) 'try) (M-state-try stmt state return break continue throw))  ; Need to implement
+      (else (error 'statement-not-defined)))))
 
 ; M-integer: computes the value of an expression. Outputs a value or bad operator.
 (define M-integer
@@ -72,8 +88,12 @@
 
 ; Addbinding: stores value in a variable
 (define addbinding
-  (lambda (name value state) (list (add-to-end name (variables state)) (add-to-end value (values state)))))
-
+  (lambda (name value state)
+    (if (null? (cdr state))
+        (list (list (add-to-end name (car (car state))) (add-to-end value (car (cdr (car state))))))
+        ; new logic appending into the left-most frame
+        (cons (list (add-to-end name (car (car state))) (add-to-end value (car (cdr (car state))))) (remove-frame state)))))
+        
 ; Removebinding: removes the value from a variable
 (define removebinding
   (lambda (name state)
@@ -83,7 +103,15 @@
 
 ; Lookupbinding: looks up the value of a given variable
 (define lookupbinding
-  (lambda (name state) (element-at-index (index name (variables state)) (values state))))
+  (lambda (name state)
+    (if (null? (cdr state))
+        (element-at-index (index name (car (car state))) (car (cdr (car state))))
+        ; go thru right-most to left-most layer, to get the value
+        (if (equal? (element-at-index (index name (car (car state))) (car (cdr (car state)))) 'not-here)
+            ; keep going to next layer
+            (lookupbinding name (cdr state))
+            ; else, return the value
+            (element-at-index (index name (car (car state))) (car (cdr (car state))))))))
 
 ; Abstrations for bindings
 (define variables car)
@@ -96,11 +124,12 @@
 
 ; M-state-declaration: 
 (define M-state-declaration
-  (lambda (expression state return break continue throw)
+  (lambda (expression state)
     (cond
       ((null? (cddr expression)) (addbinding (variable expression) 'null state))
-      ((declared? (variable expression) (car state)) (addbinding (variable expression) (M-integer (expression-value expression) state) (removebinding (variable expression) state)))
+      ((declared? (variable expression) (car (car state))) (addbinding (variable expression) (M-integer (expression-value expression) state) (removebinding (variable expression) state)))
       (else (addbinding (variable expression) (M-integer (expression-value expression) state) state)))))
+
 
 ; Abstractions for M-state-assignment and declaration
 (define variable cadr)
@@ -135,11 +164,11 @@
 
 ; M-state-if: if the condition is true, it executes statement1, if not, executes statement2
 (define M-state-if
-  (lambda (ifstate state return break throw)
+  (lambda (ifstate state return break continue throw)
     (cond
       ((M-boolean (ifcondition ifstate) state)
-       (M-state (ifbody ifstate) state))
-      ((not (null? (cdddr ifstate))) (M-state (nextif ifstate) state))
+       (M-state (ifbody ifstate) state return break continue throw))
+      ((not (null? (cdddr ifstate))) (M-state (nextif ifstate) state return break continue throw))
       (else state))))
 
 ; Abstraction for M-state-if
@@ -147,21 +176,7 @@
 (define ifbody (lambda (ifstate) (caddr ifstate)))
 (define nextif (lambda (ifstate) (cadddr ifstate)))
 
-; M-state: goes through parsed code and calls applicable functions to run the code
-(define M-state
-  (lambda (stmt state return break continue throw)
-    (cond
-      ((eq? (operator stmt) 'var) (M-state-declaration stmt state return break continue throw))
-      ((eq? (operator stmt) '=) (M-state-assignment stmt state throw))
-      ((eq? (operator stmt) 'if) (M-state-if stmt state return break throw))
-      ((eq? (operator stmt) 'while) (M-state-while stmt state return break throw continue))
-      ((eq? (operator stmt) 'return) (M-state-return stmt state return throw))
-      ((eq? (operator stmt) 'throw) (M-state-throw stmt state throw))
-      ((eq? (operator stmt) 'continue) (continue state))
-      ((eq? (operator stmt) 'break) (break state))
-      ((eq? (operator stmt) 'begin) (M-state-begin stmt state return break continue throw)) 
-      ;((eq? (operator stmt) 'try) (M-state-try stmt state return break continue throw))  ; Need to implement
-      (else (error 'statement-not-defined)))))
+
 
 (define M-state-throw
   (lambda (throwblock state throw)
@@ -245,8 +260,11 @@
 ; return the index of an element in the list
 (define index
   (lambda (a lis)
-    (if
-     (equal? (car lis) a) 0 (+ 1 (index a (cdr lis))))))
+    (cond
+      ((null? lis) -1)
+      ((equal? (car lis) a) 0)
+      (else (+ 1 (index a (cdr lis)))))))
+
 ; remove an element at a given index
 (define remove-element-by-index
   (lambda (a lis)
@@ -254,10 +272,12 @@
       ((null? lis) lis)
       ((= a 0) (cdr lis))
       (else (cons (car lis) (remove-element-by-index (- a 1) (cdr lis)))))))
+
 ; return an element at a given index
 (define element-at-index
   (lambda (a lis)
     (cond
+      ((= a -1) 'not-here)
       ((= a 0)
        (if (eq? (car lis) 'null)
            (error 'unassigned-variable)
