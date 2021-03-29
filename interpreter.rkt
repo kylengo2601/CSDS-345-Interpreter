@@ -106,7 +106,7 @@
 (define variable cadr)
 (define expression-value (lambda (expression) (caddr expression)))
 
-; M-state-while: iterates through the while loop and exits with the state
+; M-state-while with break and continue implemented
 (define M-state-while
   (lambda (stmt state return throw)
     (call/cc
