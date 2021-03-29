@@ -108,11 +108,13 @@
 
 ; M-state-while: iterates through the while loop and exits with the state
 (define M-state-while
-  (lambda (whilestate state return break throw continue)
-    (cond
-      ((M-boolean (condition whilestate) state) (call/cc (lambda (f) 
-                                                            (M-state-while whilestate (M-state (body whilestate) state f break continue throw) break continue throw))))
-      (else state))))
+  (lambda (stmt state return throw)
+    (call/cc
+     (lambda (break)
+       (letrec ((loop (lambda (condition body state)
+                        (if (M-boolean condition state)
+                            (loop condition body (M-state body state return break (lambda (v) (break (loop condition body v))) throw)) state))))
+         (loop (condition stmt) (body stmt) state))))))
 
 ; Abstraction for M-state-while
 (define condition cadr)
