@@ -5,13 +5,13 @@
 
 ; 3 errors
 (define breakOutsideLoopError
-  (lambda (env) (myerror "Break used outside loop")))
+  (lambda (env) (error 'Break-used-outside-loop)))
 
 (define continueOutsideLoopError
-  (lambda (env) (myerror "Continue used outside of loop")))
+  (lambda (env) (error 'Continue-used-outside-of-loop)))
 
 (define uncaughtExceptionThrownError
-  (lambda (v env) (myerror "Uncaught exception thrown")))
+  (lambda (v env) (error 'Uncaught-exception-thrown)))
 
 ;Interpret abstraction: initializes the state to be null with no variables
 (define initialstate '(()()))
@@ -21,13 +21,15 @@
   (lambda (filename)
     (call/cc
       (lambda (return)
-        (interpret-code-block (parser file) (initialstate) return
+        (interpret-code-block (parser filename) (initialstate) return
                                   breakOutsideLoopError continueOutsideLoopError
                                   uncaughtExceptionThrownError)))))
 
 (define interpret-code-block
   (lambda (code-block-list state return break continue throw)
-    (interpret-code-block (rest-of-code code-block-list) (M-state (first-code-block code-block-list) state return break continue throw) return break continue throw)))
+    (if (null? code-block-list)
+        state
+        (interpret-code-block (rest-of-code code-block-list) (M-state (first-code-block code-block-list) state return break continue throw) return break continue throw))))
     
 (define rest-of-code cdr)
 (define first-code-block car)
@@ -153,24 +155,25 @@
       ((eq? (operator stmt) 'while) (M-state-while stmt state return throw))
       ((eq? (operator stmt) 'return) (M-state-return stmt state return throw))
       ((eq? (operator stmt) 'throw) (M-state-throw stmt state throw))
-      ((eq? (operator stmt) 'continue) (M-state-continue state continue))
-      ((eq? (operator stmt) 'break) (M-state-break state))
-      ((eq? (operator stmt) 'begin) ) ; need this??
+      ((eq? (operator stmt) 'continue) (continue state))
+      ((eq? (operator stmt) 'break) (break state))
+      ((eq? (operator stmt) 'begin) (M-state-begin stmt state return break continue throw)) 
       ((eq? (operator stmt) 'try) (M-state-try stmt state return break continue throw))
       (else (error 'statement-not-defined)))))
 
 (define M-state-throw
   (lambda (throwblock state throw)
     (throw (M-integer (expression-of throwblock) state throw) state)))
-    
-(define M-state-continue
-  (lambda (state continue)
-    (continue (state))))
 
-; Abstraction for M-state
-(define remaining-stmts cdr)
-(define first-stmt car)
-
+; handle code block
+(define M-state-begin
+  (lambda (statement state return break continue throw)
+    (remove-frame (interpret-code-block (cdr statement)
+                                         (add-frame state)
+                                         return
+                                         (lambda (s) (break (remove-frame s)))
+                                         (lambda (s) (continue (remove-frame s)))
+                                         (lambda (v s) (throw v (remove-frame s)))))))
 
 ;-----------------
 ; HELPER FUNCTIONS
@@ -210,10 +213,15 @@
   (lambda (catch-statement)
     (car (operand1 catch-statement))))
 
+; add a new frame on the top of the state
+(define add-frame
+  (lambda (state)
+    (cons '(() ()) state)))
 
-
-
-
+; remove a frame from the state
+(define remove-frame
+  (lambda (state)
+    (cdr state)))
 
 ; return true if x is a name of a variable (not a list or a number)
 (define name?
