@@ -158,7 +158,7 @@
       ((eq? (operator stmt) 'continue) (continue state))
       ((eq? (operator stmt) 'break) (break state))
       ((eq? (operator stmt) 'begin) (M-state-begin stmt state return break continue throw)) 
-      ;((eq? (operator stmt) 'try) (M-state-try stmt state return break continue throw))
+      ;((eq? (operator stmt) 'try) (M-state-try stmt state return break continue throw))  ; Need to implement
       (else (error 'statement-not-defined)))))
 
 (define M-state-throw
