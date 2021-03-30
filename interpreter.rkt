@@ -16,6 +16,7 @@
 ;Interpret abstraction: initializes the state to be null with no variables
 (define initialstate '((()())))
 
+; Entry point of the interpreter
 ; interpret: gets the a parsed list of code from a file
 (define interpret
   (lambda (filename)
@@ -25,12 +26,14 @@
                                   breakOutsideLoopError continueOutsideLoopError
                                   uncaughtExceptionThrownError)))))
 
+; interpret the code block after parser
 (define interpret-code-block
   (lambda (code-block-list state return break continue throw)
     (if (null? code-block-list)
         state
         (interpret-code-block (rest-of-code code-block-list) (M-state (first-code-block code-block-list) state return break continue throw) return break continue throw))))
     
+; Abstractions for interpret-code-block
 (define rest-of-code cdr)
 (define first-code-block car)
 
@@ -47,7 +50,7 @@
       ((eq? (operator stmt) 'continue) (continue state))
       ((eq? (operator stmt) 'break) (break state))
       ((eq? (operator stmt) 'begin) (M-state-begin stmt state return break continue throw)) 
-      ;((eq? (operator stmt) 'try) (M-state-try stmt state return break continue throw))  ; Need to implement
+      ((eq? (operator stmt) 'try) (M-state-try stmt state return break continue throw))
       (else (error 'statement-not-defined)))))
 
 ; M-integer: computes the value of an expression. Outputs a value or bad operator.
@@ -68,8 +71,8 @@
 (define M-boolean
   (lambda (expression state)
     (cond
-      ((eq? (operator expression) '#t) #t)
-      ((eq? (operator expression) '#f) #f)
+      ((eq? expression 'true) #t)
+      ((eq? expression 'false) #f)
       ((eq? (operator expression) '<) (< (M-integer (leftoperand expression) state) (M-integer (rightoperand expression) state)))
       ((eq? (operator expression) '<=) (<= (M-integer (leftoperand expression) state) (M-integer (rightoperand expression) state)))
       ((eq? (operator expression) '>) (> (M-integer (leftoperand expression) state) (M-integer (rightoperand expression) state)))
@@ -90,9 +93,9 @@
 (define addbinding
   (lambda (name value state)
     (if (null? (cdr state))
-        (list (list (add-to-end name (car (car state))) (add-to-end value (car (cdr (car state))))))
+        (list (list (add-to-end name (layer-variables state)) (add-to-end value (layer-values state))))
         ; new logic appending into the left-most frame
-        (cons (list (add-to-end name (car (car state))) (add-to-end value (car (cdr (car state))))) (remove-frame state)))))
+        (cons (list (add-to-end name (layer-variables state)) (add-to-end value (layer-values state))) (remove-frame state)))))
         
 ; Removebinding: removes the value from a variable
 (define removebinding
@@ -101,33 +104,47 @@
       ((null? state) state)
       (else (list (removefirst name (variables state)) (remove-element-by-index (index name (variables state)) (values state)))))))
 
+; Replacebinding: replace the value of a variable with a new value
+(define replacebinding
+  (lambda (name newval state)
+    (if (equal? (element-at-index (index name (layer-variables state)) (layer-values state)) 'not-here)
+        ; not found var, keep checking next layer for variable
+        (cons (car state) (replacebinding name newval (cdr state)))
+        ; else found, replace the binding
+        (list (cons (layer-variables state) (list (replace-element-by-index newval (index name (layer-variables state)) (layer-values state))))))))
+
+; Abstractions for binding layers
+(define layer-variables (lambda (state) (car (car state))))
+(define layer-values (lambda (state) (car (cdr (car state)))))
+
 ; Lookupbinding: looks up the value of a given variable
 (define lookupbinding
   (lambda (name state)
-    (if (null? (cdr state))
-        (element-at-index (index name (car (car state))) (car (cdr (car state))))
-        ; go thru right-most to left-most layer, to get the value
-        (if (equal? (element-at-index (index name (car (car state))) (car (cdr (car state)))) 'not-here)
+    (cond
+      ((null? (cdr state)) (element-at-index (index name (layer-variables state)) (layer-values state)))
+      (else
+       (if (equal? (element-at-index (index name (layer-variables state)) (layer-values state)) 'not-here)
             ; keep going to next layer
             (lookupbinding name (cdr state))
             ; else, return the value
-            (element-at-index (index name (car (car state))) (car (cdr (car state))))))))
+            (element-at-index (index name (layer-variables state)) (layer-values state)))))))
 
-; Abstrations for bindings
+; Abstractions for bindings
 (define variables car)
 (define values cadr)
       
 ; M-state-assignment: computes expression and registers value of expression to variable name
 (define M-state-assignment
   (lambda (expression state)
-    (addbinding (variable expression) (M-integer (expression-value expression) state) (removebinding (variable expression) state))))
+    (replacebinding (variable expression) (M-integer (expression-value expression) state) state)))
+    ;(addbinding (variable expression) (M-integer (expression-value expression) state) (removebinding (variable expression) state))))
 
 ; M-state-declaration: 
 (define M-state-declaration
   (lambda (expression state)
     (cond
       ((null? (cddr expression)) (addbinding (variable expression) 'null state))
-      ((declared? (variable expression) (car (car state))) (addbinding (variable expression) (M-integer (expression-value expression) state) (removebinding (variable expression) state)))
+      ((declared? (variable expression) (layer-variables state)) (addbinding (variable expression) (M-integer (expression-value expression) state) (removebinding (variable expression) state)))
       (else (addbinding (variable expression) (M-integer (expression-value expression) state) state)))))
 
 
@@ -157,10 +174,9 @@
        (if (isBool (cadr returnstate))
            (M-boolean (cadr returnstate) state)
            (M-integer (cadr returnstate) state)))
-      ((eq? (cadr returnstate) '#t) #t)
-      ((eq? (cadr returnstate) '#f) #f)
-      (else (M-integer (cadr returnstate) state)))))
-
+      ((eq? (cadr returnstate) '#t) (return #t))
+      ((eq? (cadr returnstate) '#f) (return #f))
+      (else (return (M-integer (cadr returnstate) state))))))
 
 ; M-state-if: if the condition is true, it executes statement1, if not, executes statement2
 (define M-state-if
@@ -177,12 +193,27 @@
 (define nextif (lambda (ifstate) (cadddr ifstate)))
 
 
-
+; M-state-throw: throw exceptions
 (define M-state-throw
   (lambda (throwblock state throw)
     (throw (M-integer (expression-of throwblock) state throw) state)))
 
-; handle code block
+; M-state-try: runs try-block, runs catch, and always executes finally
+(define M-state-try
+  (lambda (try state return break continue throw)
+    (call/cc (lambda (t) (lambda (v s) (M-state-begin (finallyblock try)
+                                          (M-state-begin (tryblock try) s return break continue
+                                                         (M-state-newthrow((catchblock try) v s return break continue throw) return break continue throw)) return break continue throw))))))
+; Abstractions for try/catch
+(define tryblock cdr)
+(define catchblock cddr)
+(define finallyblock cdddr)
+(define exception cddr)
+(define M-state-newthrow
+  (lambda (catchblock e state return break continue throw)
+    (throw (M-state-begin (exception catchblock) state return break continue throw))))
+
+; handle code block "begin"
 (define M-state-begin
   (lambda (statement state return break continue throw)
     (remove-frame (interpret-code-block (cdr statement)
@@ -210,25 +241,7 @@
   (lambda (statement)
     (not (null? (cdddr statement)))))
 
-; these helper functions define the parts of the various statement types
 (define expression-of operand1)
-(define get-declare-var operand1)
-(define get-declare-value operand2)
-(define exists-declare-value? exists-operand2?)
-(define get-assign-lhs operand1)
-(define get-assign-rhs operand2)
-(define get-condition operand1)
-(define get-then operand2)
-(define get-else operand3)
-(define get-body operand2)
-(define exists-else? exists-operand3?)
-(define get-try operand1)
-(define get-catch operand2)
-(define get-finally operand3)
-
-(define catch-var
-  (lambda (catch-statement)
-    (car (operand1 catch-statement))))
 
 ; add a new frame on the top of the state
 (define add-frame
@@ -272,6 +285,14 @@
       ((null? lis) lis)
       ((= a 0) (cdr lis))
       (else (cons (car lis) (remove-element-by-index (- a 1) (cdr lis)))))))
+
+; replace an element at a given index
+(define replace-element-by-index
+  (lambda (a i lis)
+    (cond
+      ((null? lis) lis)
+      ((= i 0) (cons a (cdr lis)))
+      (else (cons (car lis) (replace-element-by-index a (- i 1) (cdr lis)))))))
 
 ; return an element at a given index
 (define element-at-index
