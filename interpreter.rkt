@@ -50,7 +50,7 @@
       ((eq? (operator stmt) 'continue) (continue state))
       ((eq? (operator stmt) 'break) (break state))
       ((eq? (operator stmt) 'begin) (M-state-begin stmt state return break continue throw)) 
-      ;((eq? (operator stmt) 'try) (M-state-try stmt state return break continue throw))  ; Need to implement
+      ((eq? (operator stmt) 'try) (M-state-try stmt state return break continue throw))
       (else (error 'statement-not-defined)))))
 
 ; M-integer: computes the value of an expression. Outputs a value or bad operator.
@@ -71,8 +71,8 @@
 (define M-boolean
   (lambda (expression state)
     (cond
-      ((eq? (operator expression) '#t) #t)
-      ((eq? (operator expression) '#f) #f)
+      ((eq? expression 'true) #t)
+      ((eq? expression 'false) #f)
       ((eq? (operator expression) '<) (< (M-integer (leftoperand expression) state) (M-integer (rightoperand expression) state)))
       ((eq? (operator expression) '<=) (<= (M-integer (leftoperand expression) state) (M-integer (rightoperand expression) state)))
       ((eq? (operator expression) '>) (> (M-integer (leftoperand expression) state) (M-integer (rightoperand expression) state)))
@@ -197,6 +197,21 @@
 (define M-state-throw
   (lambda (throwblock state throw)
     (throw (M-integer (expression-of throwblock) state throw) state)))
+
+; M-state-try: runs try-block, runs catch, and always executes finally
+(define M-state-try
+  (lambda (try state return break continue throw)
+    (call/cc (lambda (t) (lambda (v s) (M-state-begin (finallyblock try)
+                                          (M-state-begin (tryblock try) s return break continue
+                                                         (M-state-newthrow((catchblock try) v s return break continue throw) return break continue throw)) return break continue throw))))))
+; Abstractions for try/catch
+(define tryblock cdr)
+(define catchblock cddr)
+(define finallyblock cdddr)
+(define exception cddr)
+(define M-state-newthrow
+  (lambda (catchblock e state return break continue throw)
+    (throw (M-state-begin (exception catchblock) state return break continue throw))))
 
 ; handle code block "begin"
 (define M-state-begin
