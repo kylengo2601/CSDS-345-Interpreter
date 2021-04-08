@@ -1,6 +1,6 @@
 ; If you are using scheme instead of racket, comment these two lines, uncomment the (load "simpleParser.scm") and comment the (require "simpleParser.rkt")
 #lang racket
-(require "simpleParser.rkt")
+(require "functionParser.rkt")
 ; (load "simpleParser.scm")
 
 
@@ -44,6 +44,8 @@
       ((eq? 'begin (statement-type statement)) (interpret-block statement environment return break continue throw))
       ((eq? 'throw (statement-type statement)) (interpret-throw statement environment throw))
       ((eq? 'try (statement-type statement)) (interpret-try statement environment return break continue throw))
+      ((eq? 'function (statement-type statement)) (interpret-function-binding statement environment return break continue throw))
+      ((eq? 'funcall (statement-type statement)) (interpret-function-call statement environment return break continue throw))
       (else (myerror "Unknown statement:" (statement-type statement))))))
 
 ; Calls the return continuation with the given expression value
@@ -184,6 +186,25 @@
       ((eq? '|| (operator expr)) (or op1value (eval-expression (operand2 expr) environment)))
       ((eq? '&& (operator expr)) (and op1value (eval-expression (operand2 expr) environment)))
       (else (myerror "Unknown operator:" (operator expr))))))
+
+; Binds a function name to its closure.
+(define interpret-function-binding
+  (lambda (statement environment return break continue throw)
+    (cond
+      ((null? (cddr statement)) environment)
+      (else (insert (car (cdr (car statement))) (car (cdddr (car statement))) environment) (iterate-params (cddar statement) environment)))))
+
+; Iterates through the parameters of a function and adds them to the frame of environment.
+(define iterate-params
+  (lambda (names environment)
+    (cond
+      ((null? names) environment)
+    (insert (cdr names) (insert (car names) 'null environment)))))
+
+; Calls the function closure when the name is called.
+(define interpret-function-call
+  (lambda (statement environment return break continue throw)
+    (interpret-block (lookup-in-env (car (cdr (car statement))) environment))))
 
 ; Determines if two values are equal.  We need a special test because there are both boolean and integer types.
 (define isequal
