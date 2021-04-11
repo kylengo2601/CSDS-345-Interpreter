@@ -186,18 +186,6 @@
       ((eq? (operator expr) 'funcall) (function-execution (cdr expr) environment))
       (else (eval-operator expr environment)))))
 
-(define function-execution
-  (lambda (funcall envr)
-    (call/cc
-     (lambda (return)
-       (let* ((closure (lookup-in-env (car funcall)))
-              (body (car closure))
-              (formal-params (cadr closure))
-              (actual-params (cdr funcall))
-              (fstate1 ((caddr closure) envr))
-              (fstate2 (interpret-function-binding formal-params actual-params envr (push-frame fstate1))))
-         (interpret-statement body fstate2 (lambda (env) (myerror "Break used outside of loop")) return (lambda (env) (myerror "Continue used outside of loop")) return))))))
-
 ; Evaluate a binary (or unary) operator.  Although this is not dealing with side effects, I have the routine evaluate the left operand first and then
 ; pass the result to eval-binary-op2 to evaluate the right operand.  This forces the operands to be evaluated in the proper order in case you choose
 ; to add side effects to the interpreter
@@ -258,6 +246,18 @@
       ((not (eq? (length param-names) (length param-values))) (myerror "Mismatching parameters and arguments"))
       ((list? param-names) (add-parameters-to-environment (parameters param-names) (parameters param-values) (insert (first param-names) (eval-expression (first param-values) (pop-frame environment) throw) environment) throw))
       (else (insert param-names (eval-expression param-values (pop-frame environment)) environment)))))
+
+(define function-execution
+  (lambda (funcall envr)
+    (call/cc
+     (lambda (return)
+       (let* ((closure (lookup-in-env (car funcall)))
+              (body (car closure))
+              (formal-params (cadr closure))
+              (actual-params (cdr funcall))
+              (fstate1 ((caddr closure) envr))
+              (fstate2 (interpret-function-binding formal-params actual-params envr (push-frame fstate1))))
+         (interpret-statement body fstate2 (lambda (env) (myerror "Break used outside of loop")) return (lambda (env) (myerror "Continue used outside of loop")) return))))))
 
 ; Determines if two values are equal.  We need a special test because there are both boolean and integer types.
 (define isequal
