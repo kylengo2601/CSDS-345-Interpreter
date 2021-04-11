@@ -175,6 +175,7 @@
       (else (cons 'begin (cadr finally-statement))))))
 
 ; Evaluates all possible boolean and arithmetic expressions, including constants and variables.
+; Add function call handling
 (define eval-expression
   (lambda (expr environment)
     (cond
@@ -182,7 +183,20 @@
       ((eq? expr 'true) #t)
       ((eq? expr 'false) #f)
       ((not (list? expr)) (lookup expr environment))
+      ((eq? (operator expr) 'funcall) (function-execution (cdr expr) environment))
       (else (eval-operator expr environment)))))
+
+(define function-execution
+  (lambda (funcall envr)
+    (call/cc
+     (lambda (return)
+       (let* ((closure (lookup-in-env (car funcall)))
+              (body (car closure))
+              (formal-params (cadr closure))
+              (actual-params (cdr funcall))
+              (fstate1 ((caddr closure) envr))
+              (fstate2 (interpret-function-binding formal-params actual-params envr (push-frame fstate1))))
+         (interpret-statement body fstate2 (lambda (env) (myerror "Break used outside of loop")) return (lambda (env) (myerror "Continue used outside of loop")) return))))))
 
 ; Evaluate a binary (or unary) operator.  Although this is not dealing with side effects, I have the routine evaluate the left operand first and then
 ; pass the result to eval-binary-op2 to evaluate the right operand.  This forces the operands to be evaluated in the proper order in case you choose
@@ -252,6 +266,9 @@
         (= val1 val2)
         (eq? val1 val2))))
 
+; abstraction for functions
+(define name car)
+(define actualparams cdr)
 
 ;-----------------
 ; HELPER FUNCTIONS
@@ -457,4 +474,3 @@
                             str
                             (makestr (string-append str (string-append " " (symbol->string (car vals)))) (cdr vals))))))
       (error-break (display (string-append str (makestr "" vals)))))))
-
