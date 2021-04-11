@@ -266,10 +266,6 @@
         (= val1 val2)
         (eq? val1 val2))))
 
-; abstraction for functions
-(define name car)
-(define actualparams cdr)
-
 ;-----------------
 ; HELPER FUNCTIONS
 ;-----------------
