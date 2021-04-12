@@ -220,10 +220,12 @@
   (lambda (statement environment return break continue throw)
     (cond
       ((null? (func-body statement)) environment) ;checks if the function body is empty
+      ((eq? (func-name statement) 'main) (interpret-statement (main-func-body statement) environment return break continue throw))
       (else (insert (func-name statement) (func-body statement) environment)))))
 
 (define func-name car)
 (define func-body cdr)
+(define main-func-body caaddr)
 (define statement-list-of-function cadr)
 
 ; Iterates through the parameters of a function and adds them to the frame of environment.
