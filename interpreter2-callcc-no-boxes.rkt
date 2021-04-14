@@ -184,7 +184,7 @@
     (cond
       ((number? expr) expr)
       ((eq? expr 'true) #t)
-      ((eq? expr 'false) #f)
+      ((eq? expr 'false) #f)   
       ((not (list? expr)) (lookup expr environment))
       ((eq? (operator expr) 'funcall) (function-execution (cdr expr) environment))
       (else (eval-operator expr environment)))))
@@ -223,7 +223,6 @@
   (lambda (statement environment return break continue throw)
     (cond
       ((null? (func-body statement)) environment) ;checks if the function body is empty
-      ;((eq? (func-name statement) 'main) (interpret-statement (main-func-body statement) environment return break continue throw))
       (else (insert (func-name statement) (func-body statement) environment)))))
 
 (define func-name car)
@@ -243,6 +242,14 @@
   (lambda (statement environment return break continue throw)
     (interpret-block (lookup-in-env (car (cdr (car statement))) environment))))
 
+(define create-bindings
+  (lambda (formalparams actualparams state newState throw)
+    (cond
+      ((or (and (null? formalparams) (not (null? actualparams))) (and (not (null? formalparams)) (null? actualparams))) (myerror "Mismatching parameters and arguments"))
+      ((null? formalparams) newState)
+      (else (create-bindings (cdr formalparams) (cdr actualparams) state
+                       (insert (car formalparams) (eval-expression (car actualparams) state) newState) throw)))))
+
 ; adds the given parameters to the givene environment
 (define add-parameters-to-environment
   (lambda (param-names param-values environment throw)
@@ -256,12 +263,12 @@
   (lambda (funcall envr)
     (call/cc
      (lambda (return)
-       (let* ((closure (lookup-in-env (car funcall)))
-              (body (car closure))
-              (formal-params (cadr closure))
+       (let* ((closure (lookup-in-env (car funcall) envr))
+              (body (cadr closure))
+              (formal-params (car closure))
               (actual-params (cdr funcall))
-              (fstate1 ((caddr closure) envr))
-              (fstate2 (interpret-function-binding formal-params actual-params envr (push-frame fstate1))))
+              (fstate1 ((caddr closure) envr))  ; state function of closure
+              (fstate2 (create-bindings formal-params actual-params envr (push-frame fstate1))))  ; create binding 
          (interpret-statement body fstate2 (lambda (env) (myerror "Break used outside of loop")) return (lambda (env) (myerror "Continue used outside of loop")) return))))))
 
 ; Determines if two values are equal.  We need a special test because there are both boolean and integer types.
