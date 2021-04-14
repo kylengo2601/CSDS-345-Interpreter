@@ -44,7 +44,10 @@
       ((eq? 'begin (statement-type statement)) (interpret-block statement environment return break continue throw))
       ((eq? 'throw (statement-type statement)) (interpret-throw statement environment throw))
       ((eq? 'try (statement-type statement)) (interpret-try statement environment return break continue throw))
-      ((eq? 'function (statement-type statement)) (interpret-function-binding (cdr statement) environment return break continue throw))
+      ((eq? 'function (statement-type statement))
+       (if (eq? (cadr statement) 'main)
+           (interpret-statement-list (main-func-body statement) environment return break continue throw)
+           (interpret-function-binding (cdr statement) environment return break continue throw)))
       ((eq? 'funcall (statement-type statement)) (interpret-funcall-result-environment (statement-list-from-function (lookup (function-name (statement-without-funcall statement)) environment)) (add-parameters-to-environment (get-parameters (lookup (function-name (statement-without-funcall statement)) environment)) (parameters (statement-without-funcall statement)) (push-frame environment) throw)
                                                                                        return
                                                                                        break continue throw))
@@ -220,12 +223,12 @@
   (lambda (statement environment return break continue throw)
     (cond
       ((null? (func-body statement)) environment) ;checks if the function body is empty
-      ((eq? (func-name statement) 'main) (interpret-statement (main-func-body statement) environment return break continue throw))
+      ;((eq? (func-name statement) 'main) (interpret-statement (main-func-body statement) environment return break continue throw))
       (else (insert (func-name statement) (func-body statement) environment)))))
 
 (define func-name car)
 (define func-body cdr)
-(define main-func-body caaddr)
+(define main-func-body cadddr)
 (define statement-list-of-function cadr)
 
 ; Iterates through the parameters of a function and adds them to the frame of environment.
