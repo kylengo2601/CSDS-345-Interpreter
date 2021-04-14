@@ -1,8 +1,7 @@
-; If you are using scheme instead of racket, comment these two lines, uncomment the (load "simpleParser.scm") and comment the (require "simpleParser.rkt")
+; Interpreter project part 3
+; Group 22: Kris Tran, Kyle Ngo, Aranya Kumar
 #lang racket
 (require "functionParser.rkt")
-; (load "simpleParser.scm")
-
 
 ; An interpreter for the simple language that uses call/cc for the continuations.  Does not handle side effects.
 (define call/cc call-with-current-continuation)
@@ -65,22 +64,6 @@
   (lambda (statement environment return)
     (return (eval-expression (get-expr statement) environment))))
 
-; Return environment resulted from calling function
-(define interpret-funcall-result-environment
- (lambda (statement-list environment return break continue throw)
-  (cond
-    ((null? statement-list) environment)
-    (else (if (list? (call/cc
-                      (lambda (breakreturn)
-                        (interpret-statement (first-statement statement-list) environment breakreturn break continue throw))))
-                  (interpret-funcall-result-environment (rest-of-statement-list statement-list) (call/cc
-                                                                              (lambda (breakreturn)
-                                                                                (interpret-statement (first-statement statement-list) environment breakreturn break continue throw)))
-                                                        return break continue throw)
-                  environment)))))
-
-(define first-statement car)
-(define rest-of-statement-list cdr)
 
 ; Adds a new variable binding to the environment.  There may be an assignment with the variable
 (define interpret-declare
@@ -218,17 +201,63 @@
       ((eq? '&& (operator expr)) (and op1value (eval-expression (operand2 expr) environment)))
       (else (myerror "Unknown operator:" (operator expr))))))
 
+; New method implemented for part 3
+
+; Return environment resulted from calling function
+(define interpret-funcall-result-environment
+ (lambda (statement-list environment return break continue throw)
+  (cond
+    ((null? statement-list) environment)
+    (else (if (list? (call/cc
+                      (lambda (breakreturn)
+                        (interpret-statement (first-statement statement-list) environment breakreturn break continue throw))))
+                  (interpret-funcall-result-environment (rest-of-statement-list statement-list) (call/cc
+                                                                              (lambda (breakreturn)
+                                                                                (interpret-statement (first-statement statement-list) environment breakreturn break continue throw)))
+                                                        return break continue throw)
+                  environment)))))
+
+; Abstractions for statement
+(define first-statement car)
+(define rest-of-statement-list cdr)
+
 ; Binds a function name to its closure.
 (define interpret-function-binding
   (lambda (statement environment return break continue throw)
     (cond
       ((null? (func-body statement)) environment) ;checks if the function body is empty
-      (else (insert (func-name statement) (func-body statement) environment)))))
+      (else (insert (func-name statement) (create-closure statement) environment)))))
 
 (define func-name car)
 (define func-body cdr)
+(define func-formal-params caddr)
 (define main-func-body cadddr)
 (define statement-list-of-function cadr)
+
+; Create new closure from a statement
+(define create-closure
+  (lambda (stmt)
+    (list (func-body stmt) (func-formal-params stmt) (lambda (envr) (func-state (func-name stmt) envr)))))
+
+; State function of the closure
+(define func-state
+  (lambda (name envr)
+    (cond
+      ((null? envr) envr)
+      ((null? (names envr)) (func-state name (previous-frame envr)))
+      ((eq? (car (names envr)) name) envr)
+      (else (func-state name (rest-of-state envr))))))
+
+(define names car)
+(define previous-frame caddr)
+
+; state the rest of the bindings except the first one
+(define rest-of-state
+  (lambda (state)
+    (list (vars state) (values state) (previous-frame state))))
+
+(define vars cdar)
+(define values cdadr)
 
 ; Iterates through the parameters of a function and adds them to the frame of environment.
 (define iterate-params
@@ -242,6 +271,7 @@
   (lambda (statement environment return break continue throw)
     (interpret-block (lookup-in-env (car (cdr (car statement))) environment))))
 
+; create new bindings inside function execution
 (define create-bindings
   (lambda (formalparams actualparams state newState throw)
     (cond
@@ -259,13 +289,14 @@
       ((list? param-names) (add-parameters-to-environment (parameters param-names) (parameters param-values) (insert (first param-names) (eval-expression (first param-values) (pop-frame environment) throw) environment) throw))
       (else (insert param-names (eval-expression param-values (pop-frame environment)) environment)))))
 
+; execute the function call
 (define function-execution
   (lambda (funcall envr)
     (call/cc
      (lambda (return)
-       (let* ((closure (lookup-in-env (car funcall) envr))
-              (body (cadr closure))
-              (formal-params (car closure))
+       (let* ((closure (lookup-variable (car funcall) envr))
+              (body (car closure))
+              (formal-params (cadr closure))
               (actual-params (cdr funcall))
               (fstate1 ((caddr closure) envr))  ; state function of closure
               (fstate2 (create-bindings formal-params actual-params envr (push-frame fstate1))))  ; create binding 
