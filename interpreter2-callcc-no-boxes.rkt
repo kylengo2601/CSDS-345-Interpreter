@@ -1,5 +1,5 @@
 ; CSDS 345 Interpreter Part 4
-; Kyle Ngo (ktn27), Aranya Kumar, Kris Tran
+; Kyle Ngo, Aranya Kumar, Kris Tran
 
 #lang racket
 (require "classParser.rkt")
@@ -28,8 +28,6 @@
 (define uncaughtExceptionThrownError
   (lambda (v env) (myerror "Uncaught exception thrown")))
 
-; interprets a list of statements.  The environment from each statement is used for the next ones.
-;Useful for debugging and not interpretting main
 (define interpret-statement-list
   (lambda (statement-list environment class-name return break continue throw)
     (if (null? statement-list)
@@ -91,7 +89,7 @@
 (define get-class-name car)
 (define get-rest-of-class-closure cdr)
 
-; M-environment function returns the environment that is the result of calling function
+; M-environment which returns the environment
 (define interpret-funcall-result-environment
  (lambda (statement-list environment return break continue throw)
   (cond
